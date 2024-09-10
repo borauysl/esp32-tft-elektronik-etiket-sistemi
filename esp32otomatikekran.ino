@@ -94,39 +94,48 @@ void loop() {
     // ekranı temizleyip yenisi geçiriliyo
     tft.fillScreen(ST7735_WHITE);
 
-    // barkod
-    tft.setTextColor(ST7735_BLACK);
-    tft.setTextSize(1);
-    tft.setCursor(0, 10);
-    tft.print("Barkod: ");
-    tft.print(urunBarkod);
+   // ürünün ismi
+tft.setTextColor(ST7735_BLACK);
+tft.setTextSize(1);  // Boyut küçültüldü
+tft.setCursor(10, 10);  // Ekranın üst kısmına yakın
+tft.print(urunIsim);
 
-    // isim
-    tft.setCursor(0, 30);
-    tft.print("Isim: ");
-    tft.print(urunIsim);
+// barkod
+tft.setTextSize(1);
+tft.setCursor(5, 115);  // Daha aşağıda
+tft.print("Barkod: ");
+tft.print(urunBarkod);
 
-    // fiyat
-    tft.setCursor(0, 50);
-    tft.print("Fiyat: ");
-    tft.print(urunFiyat);
-    tft.print(" TL");
+// indirim yoksa normal fiyat
+if (urunIndirimMiktar == 0) {
+  tft.setTextSize(2);  
+  tft.setCursor(5, 40);  
+  tft.setTextColor(ST7735_BLACK);
+  tft.print(urunFiyat);
+  tft.print(" TL");
+}
+// indirim varsa indirimli etiket
+else {
+  tft.setTextColor(ST7735_RED);
+  tft.setTextSize(1);
+  tft.setCursor(5, 30);
+  tft.print("INDIRIM: ");
+  tft.print(urunIndirimMiktar);
+  tft.print(" TL");
 
-    // urunIndirim boşmu yada sıfırmı bak
-    if (urunIndirimMiktar > 0) {
-      // Display Indirim Oranı
-      tft.setCursor(0, 70);
-      tft.print("Indirim Orani: ");
-      tft.print(urunIndirimMiktar);
-      tft.print(" TL");
+  tft.setTextSize(1);
+  tft.setCursor(5, 50);
+  tft.setTextColor(ST7735_BLACK);
+  tft.print(urunFiyat);
+  tft.print(" TL");
+  tft.drawLine(5, 60, 110, 60, ST7735_BLACK);
 
-      // indirimli fiyat
-      tft.setCursor(0, 90);
-      tft.print("Indirimli Fiyat: ");
-      tft.print(urunIndirimli);
-      tft.print(" TL");
-    } 
-
+  tft.setTextColor(ST7735_RED);
+  tft.setTextSize(2);
+  tft.setCursor(5, 75); 
+  tft.print(urunIndirimli);
+  tft.print(" TL");
+}
     // veri gelince bayrağı sıfırlıyoruz
     veriGeldi = false;
   }
