@@ -140,6 +140,9 @@ else {
     veriGeldi = false;
   }
 
+  // sağ üst köşede bağlı olup olmadığını gösteren kare
+tft.fillRect(120, 0, 16, 16, (WiFi.status() == WL_CONNECTED) ? ST7735_GREEN : ST7735_RED); // ekranımız rgbnin r sinden mahrum olduğu için kırmızı yerine mavi döndürüyo :)
+  
   // döngünün dönme süresi bu sayede sunucuyu dinlemeye devam ediyo
   delay(1000);
 } 
