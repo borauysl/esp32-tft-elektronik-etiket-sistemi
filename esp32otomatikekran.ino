@@ -13,8 +13,12 @@
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 // wifi bağlantısı
-const char* ssid = "internet adı";
-const char* password = "şifre";
+const char* ssid = "baglanti adi";
+const char* password = "wifi sifresi";
+
+IPAddress local_IP(192, 168, 1, 184); // esp32 nin statik belirtilen ipsi
+IPAddress gateway(192, 168, 1, 1); // wifi yönlendirici ipsi
+IPAddress subnet(255, 255, 255, 0); // ağ maskesi
 
 WebServer server(80);
 
@@ -37,12 +41,17 @@ void setup() {
   tft.setRotation(1); // ekran yönünü yatay kullandım
 
   // wifiye bağlanması ve kontrolü
+  WiFi.config(local_IP, gateway, subnet); // statik ipnin wifi beginden önce tanımlanması yapılıyor sonrasında başlatınca statik ip kullanıyo
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("WiFi bağlantısı bekleniyor...");
   }
   Serial.println("WiFi bağlı!");
+  Serial.print("IP Adresi: ");
+  Serial.println(WiFi.localIP()); // ipyi log çıktısı veriyo
+   Serial.print("\nDefault ESP32 MAC Address: ");
+  Serial.println(WiFi.macAddress());
 
   // web sunucusundan veri alma
   server.on("/update", HTTP_POST, []() {
@@ -91,10 +100,11 @@ void loop() {
   server.handleClient();  // web sunucusu loop içinde dinliyo
 
   if (veriGeldi) {
-    // ekranı temizleyip yenisi geçiriliyo
-    tft.fillScreen(ST7735_WHITE);
+    // ekranın temizlenmesi
+tft.fillScreen(ST7735_WHITE);
 
-   // ürünün ismi
+
+// ürünün ismi
 tft.setTextColor(ST7735_BLACK);
 tft.setTextSize(1);  // Boyut küçültüldü
 tft.setCursor(10, 10);  // Ekranın üst kısmına yakın
@@ -136,13 +146,14 @@ else {
   tft.print(urunIndirimli);
   tft.print(" TL");
 }
+
     // veri gelince bayrağı sıfırlıyoruz
     veriGeldi = false;
   }
 
-  // sağ üst köşede bağlı olup olmadığını gösteren kare
+// sağ üst köşede bağlı olup olmadığını gösteren kare
 tft.fillRect(120, 0, 16, 16, (WiFi.status() == WL_CONNECTED) ? ST7735_GREEN : ST7735_RED); // ekranımız rgbnin r sinden mahrum olduğu için kırmızı yerine mavi döndürüyo :)
-  
+
   // döngünün dönme süresi bu sayede sunucuyu dinlemeye devam ediyo
   delay(1000);
 } 
