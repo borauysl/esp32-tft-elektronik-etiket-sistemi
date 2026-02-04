@@ -1,159 +1,174 @@
 #include <WiFi.h>
 #include <WebServer.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
-#include <ArduinoJson.h> 
+#include <ArduinoJson.h>
 
-// tft ekran pin tanımlaması
-#define TFT_CS     5   // Chip Select
-#define TFT_DC     21  // Data/Command
-#define TFT_RST    22  // Reset
+#include <SPI.h>
+#include <GxEPD2_BW.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
 
-// tft ekran başlatması
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+// ===== ESP32 PINLER =====
+static const int8_t PIN_SCK  = 18;
+static const int8_t PIN_MISO = 19;
+static const int8_t PIN_MOSI = 23;
 
-// wifi bağlantısı
-const char* ssid = "baglanti adi";
-const char* password = "wifi sifresi";
+static const int8_t PIN_CS   = 5;
+static const int8_t PIN_DC   = 21;
+static const int8_t PIN_RST  = 22;
+static const int8_t PIN_BUSY = 4;
 
-IPAddress local_IP(192, 168, 1, 184); // esp32 nin statik belirtilen ipsi
-IPAddress gateway(192, 168, 1, 1); // wifi yönlendirici ipsi
-IPAddress subnet(255, 255, 255, 0); // ağ maskesi
+// ===== Display driver =====
+GxEPD2_BW<GxEPD2_213_B74, GxEPD2_213_B74::HEIGHT> display(
+  GxEPD2_213_B74(PIN_CS, PIN_DC, PIN_RST, PIN_BUSY)
+);
+
+// ===== WiFi =====
+const char* ssid = "internetadi";
+const char* password = "internetsifresi";
+
+IPAddress local_IP(192, 168, 1, 184);
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 255, 0);
 
 WebServer server(80);
 
+// ===== Ürün verileri =====
 String urunBarkod = "";
 String urunIsim = "";
 float urunFiyat = 0.0;
 float urunIndirimMiktar = 0.0;
 float urunIndirimli = 0.0;
 
-// veri alındıktan sonra ekranda gösterilmesini sağlıyor veri alındığında true dönecek
 bool veriGeldi = false;
+wl_status_t lastWifiStatus = WL_IDLE_STATUS;
+
+// ====== EKRANA ÇİZ ======
+void ekraniCiz()
+{
+  display.setRotation(1);
+  display.setFullWindow();
+
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+    display.setTextColor(GxEPD_BLACK);
+
+    // WiFi ikon 
+    int boxX = display.width() - 18;
+    int boxY = 2;
+    int boxW = 16;
+    int boxH = 16;
+    if (WiFi.status() == WL_CONNECTED) display.fillRect(boxX, boxY, boxW, boxH, GxEPD_BLACK);
+    else                               display.drawRect(boxX, boxY, boxW, boxH, GxEPD_BLACK);
+
+    // Ürün adı 
+    display.setFont(&FreeMonoBold9pt7b);
+    display.setCursor(10, 20);
+    display.print(urunIsim);
+
+    // Barkod 
+    display.setCursor(10, display.height() - 10);
+    display.print("Barkod: ");
+    display.print(urunBarkod);
+
+    // Fiyat bölümü
+    if (urunIndirimMiktar == 0.0f) {
+      display.setCursor(10, 70);
+      display.setTextSize(2);
+      display.print(urunFiyat, 2);
+      display.print(" TL");
+      display.setTextSize(1);
+    } else {
+      display.setTextSize(1);
+      display.setCursor(10, 40);
+      display.print("INDIRIM: ");
+      display.print(urunIndirimMiktar, 2);
+      display.print(" TL");
+
+      display.setCursor(10, 60);
+      display.print("Eski: ");
+      display.print(urunFiyat, 2);
+      display.print(" TL");
+      display.drawLine(10, 64, 140, 64, GxEPD_BLACK);
+
+      display.setTextSize(2);
+      display.setCursor(10, 95);
+      display.print(urunIndirimli, 2);
+      display.print(" TL");
+      display.setTextSize(1);
+    }
+
+  } while (display.nextPage());
+}
 
 void setup() {
-  // seri port başlatma serial monitorden kontrol sağlanabilir
   Serial.begin(115200);
 
-  // tft ekranı ayarları
-  tft.initR(INITR_BLACKTAB);
-  tft.fillScreen(ST7735_WHITE);
-  tft.setRotation(1); // ekran yönünü yatay kullandım
+  // SPI + ePaper init
+  SPI.begin(PIN_SCK, PIN_MISO, PIN_MOSI, PIN_CS);
+  display.init(115200, true, 2, false);  // Waveshare HAT reset
+  display.setTextWrap(false);
 
-  // wifiye bağlanması ve kontrolü
-  WiFi.config(local_IP, gateway, subnet); // statik ipnin wifi beginden önce tanımlanması yapılıyor sonrasında başlatınca statik ip kullanıyo
+  // WiFi
+  WiFi.config(local_IP, gateway, subnet);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("WiFi bağlantısı bekleniyor...");
+    delay(500);
+    Serial.println("WiFi baglantisi bekleniyor...");
   }
-  Serial.println("WiFi bağlı!");
-  Serial.print("IP Adresi: ");
-  Serial.println(WiFi.localIP()); // ipyi log çıktısı veriyo
-   Serial.print("\nDefault ESP32 MAC Address: ");
-  Serial.println(WiFi.macAddress());
+  Serial.println("WiFi bagli!");
+  Serial.println(WiFi.localIP());
+  lastWifiStatus = WiFi.status();
 
-  // web sunucusundan veri alma
+  // İlk ekran
+  urunIsim = "Hazir";
+  urunBarkod = "-";
+  urunFiyat = 0;
+  urunIndirimMiktar = 0;
+  urunIndirimli = 0;
+  ekraniCiz();
+
+  // Endpoint
   server.on("/update", HTTP_POST, []() {
-    if (server.hasArg("plain")) { // json içeriğine bak
-      String body = server.arg("plain");
-      
-      // json verisinin çözümlemesi
-      DynamicJsonDocument doc(1024);
-      DeserializationError error = deserializeJson(doc, body);
-      if (error) {
-        Serial.println("JSON deserialization hatası: " + String(error.c_str()));
-        server.send(400, "text/plain", "Geçersiz JSON");
-        return;
-      }
-      
-      urunBarkod = doc["urunBarkod"].as<String>();
-      urunIsim = doc["urunIsim"].as<String>();
-      urunFiyat = doc["urunFiyat"].as<float>();
-      urunIndirimMiktar = doc["urunIndirimMiktar"].as<float>();
-      urunIndirimli = doc["urunIndirimli"].as<float>();
-
-      Serial.println("Veri alındı:");
-      Serial.println("Ürün Barkod: " + urunBarkod);
-      Serial.println("Ürün İsim: " + urunIsim);
-      Serial.print("Ürün urunIndirimMiktar : ");
-      Serial.println(urunIndirimMiktar);
-      Serial.print("Ürün Fiyat: ");
-      Serial.println(urunFiyat);
-      Serial.print("Ürün İndirimli Fiyat : ");
-      Serial.println(urunIndirimli);
-      
-      server.send(200, "text/plain", "Veri alındı!");
-
-      // veri alındığında bayrak true olrak ayarlanıyo döndürülmesi sağlanıyor
-      veriGeldi = true;
-    } else {
-      Serial.println("Eksik veri");
+    if (!server.hasArg("plain")) {
       server.send(400, "text/plain", "Eksik veri");
+      return;
     }
+
+    DynamicJsonDocument doc(1024);
+    DeserializationError err = deserializeJson(doc, server.arg("plain"));
+    if (err) {
+      server.send(400, "text/plain", "Gecersiz JSON");
+      return;
+    }
+
+    urunBarkod = doc["urunBarkod"].as<String>();
+    urunIsim = doc["urunIsim"].as<String>();
+    urunFiyat = doc["urunFiyat"].as<float>();
+    urunIndirimMiktar = doc["urunIndirimMiktar"].as<float>();
+    urunIndirimli = doc["urunIndirimli"].as<float>();
+
+    Serial.println("Veri alindi, ekran guncelleniyor...");
+    veriGeldi = true;
+
+    server.send(200, "text/plain", "OK");
   });
 
   server.begin();
 }
 
 void loop() {
-  server.handleClient();  // web sunucusu loop içinde dinliyo
+  server.handleClient();
 
   if (veriGeldi) {
-    // ekranın temizlenmesi
-tft.fillScreen(ST7735_WHITE);
-
-
-// ürünün ismi
-tft.setTextColor(ST7735_BLACK);
-tft.setTextSize(1);  // Boyut küçültüldü
-tft.setCursor(10, 10);  // Ekranın üst kısmına yakın
-tft.print(urunIsim);
-
-// barkod
-tft.setTextSize(1);
-tft.setCursor(5, 115);  // Daha aşağıda
-tft.print("Barkod: ");
-tft.print(urunBarkod);
-
-// indirim yoksa normal fiyat
-if (urunIndirimMiktar == 0) {
-  tft.setTextSize(2);  
-  tft.setCursor(5, 40);  
-  tft.setTextColor(ST7735_BLACK);
-  tft.print(urunFiyat);
-  tft.print(" TL");
-}
-// indirim varsa indirimli etiket
-else {
-  tft.setTextColor(ST7735_RED);
-  tft.setTextSize(1);
-  tft.setCursor(5, 30);
-  tft.print("INDIRIM: ");
-  tft.print(urunIndirimMiktar);
-  tft.print(" TL");
-
-  tft.setTextSize(1);
-  tft.setCursor(5, 50);
-  tft.setTextColor(ST7735_BLACK);
-  tft.print(urunFiyat);
-  tft.print(" TL");
-  tft.drawLine(5, 60, 110, 60, ST7735_BLACK);
-
-  tft.setTextColor(ST7735_RED);
-  tft.setTextSize(2);
-  tft.setCursor(5, 75); 
-  tft.print(urunIndirimli);
-  tft.print(" TL");
-}
-
-    // veri gelince bayrağı sıfırlıyoruz
+    ekraniCiz();
     veriGeldi = false;
   }
 
-// sağ üst köşede bağlı olup olmadığını gösteren kare
-tft.fillRect(120, 0, 16, 16, (WiFi.status() == WL_CONNECTED) ? ST7735_GREEN : ST7735_RED); // ekranımız rgbnin r sinden mahrum olduğu için kırmızı yerine mavi döndürüyo :)
+  wl_status_t st = WiFi.status();
+  if (st != lastWifiStatus) {
+    lastWifiStatus = st;
+    ekraniCiz();
+  }
 
-  // döngünün dönme süresi bu sayede sunucuyu dinlemeye devam ediyo
-  delay(1000);
-} 
+  delay(10);
+}
